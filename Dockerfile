@@ -1,10 +1,10 @@
 # 1. lépés: Hivatalos Python alap-image használata
 FROM python:3.9-slim
 
-# 2. lépés: Rendszer szintű függőségek telepítése (lftp, mysql-client)
+# 2. lépés: Rendszer szintű függőségek telepítése (JAVÍTOTT RÉSZ)
 RUN apt-get update && apt-get install -y \
     lftp \
-    default-mysql-client \
+    mariadb-client \
     && rm -rf /var/lib/apt/lists/*
 
 # 3. lépés: Munkakönyvtár beállítása a konténeren belül
