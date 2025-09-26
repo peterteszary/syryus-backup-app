@@ -1,11 +1,14 @@
 # 1. lépés: Hivatalos Python alap-image használata
 FROM python:3.9-slim
 
-# 2. lépés: Rendszer szintű függőségek telepítése (JAVÍTOTT RÉSZ)
-RUN apt-get update && apt-get install -y \
+# 2. lépés: Rendszer szintű függőségek telepítése (JAVÍTOTT, ROBUSTUSABB VERZIÓ)
+# Ez a parancs alaposabban kezeli a csomaglistákat és a telepítést
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends \
     lftp \
     mariadb-client \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # 3. lépés: Munkakönyvtár beállítása a konténeren belül
 WORKDIR /app
