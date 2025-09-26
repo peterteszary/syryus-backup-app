@@ -9,6 +9,7 @@
             <thead>
                 <tr>
                     <th>Projekt Neve</th>
+                    <th>Ütemezés</th>
                     <th>Utolsó mentés</th>
                     <th>Állapot</th>
                     <th class="text-end">Műveletek</th>
@@ -18,6 +19,7 @@
                 {% for project in projects %}
                 <tr>
                     <td class="fw-bold">{{ project.name }}</td>
+                    <td><span class="badge bg-secondary">{{ project.backup_schedule|capitalize }}</span></td>
                     <td>{{ project.last_backup_time }}</td>
                     <td><small class="text-muted">{{ project.last_backup_status }}</small></td>
                     <td class="text-end">
@@ -30,7 +32,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="4" class="text-center py-4">Még nincsenek projektek. Adj hozzá egyet a gombbal!</td>
+                    <td colspan="5" class="text-center py-4">Még nincsenek projektek. Adj hozzá egyet a gombbal!</td>
                 </tr>
                 {% endfor %}
             </tbody>

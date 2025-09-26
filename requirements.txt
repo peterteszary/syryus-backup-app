@@ -2,3 +2,4 @@ Flask
 Flask-SQLAlchemy
 cryptography
 gunicorn
+requests
