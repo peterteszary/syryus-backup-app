@@ -2,15 +2,13 @@ import os
 import subprocess
 import requests
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from cryptography.fernet import Fernet
 import logging
 
-# Loggolás beállítása
 logging.basicConfig(level=logging.INFO)
 
-# --- ALAP KONFIGURÁCIÓ ---
 ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY').encode()
 cipher_suite = Fernet(ENCRYPTION_KEY)
 
@@ -20,8 +18,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 db = SQLAlchemy(app)
 
-
-# --- ADATBÁZIS MODELL (Javított) ---
 class Project(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, unique=True)
@@ -53,7 +49,6 @@ class Project(db.Model):
             return cipher_suite.decrypt(encrypted_pass).decode()
         return ""
 
-# --- MENTÉSI LOGIKA ---
 def _run_backup_logic(project):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     project_backup_root = os.path.join('/backups', project.name)
@@ -66,18 +61,15 @@ def _run_backup_logic(project):
         if not api_key or not project.helper_url:
             raise Exception("Helper URL or API Key is missing for this project.")
         trigger_url = f"{project.helper_url}?syryus_action=backup_db&api_key={api_key}"
-        response = requests.get(trigger_url, timeout=120)
-        response.raise_for_status()
-        response_text = response.text
-        if not response_text.startswith('SUCCESS:'):
-            raise Exception(f"Helper plugin error: {response_text}")
-        remote_file_name = response_text.split(':', 1)[1]
-        ftp_pass = project.get_password('ftp')
-        uploads_path = os.path.join(project.remote_path, 'wp-content', 'uploads')
-        lftp_get_command = f"lftp -u '{project.ftp_user},{ftp_pass}' {project.ftp_type}://{project.ftp_host} -e 'get {uploads_path}/{remote_file_name} -o {db_backup_file}; quit'"
-        subprocess.run(lftp_get_command, check=True, shell=True, stderr=subprocess.PIPE, text=True)
-        lftp_rm_command = f"lftp -u '{project.ftp_user},{ftp_pass}' {project.ftp_type}://{project.ftp_host} -e 'rm {uploads_path}/{remote_file_name}; quit'"
-        subprocess.run(lftp_rm_command, check=True, shell=True, stderr=subprocess.PIPE, text=True)
+        try:
+            with requests.get(trigger_url, timeout=300, stream=True) as r:
+                r.raise_for_status()
+                with open(db_backup_file, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            logging.info(f"Database backup successfully streamed to {db_backup_file}")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Failed to get backup from helper plugin: {e}")
     else:
         db_pass = project.get_password('db')
         db_command = f"mysqldump --host={project.db_host} --user={project.db_user} --password='{db_pass}' {project.db_name} > {db_backup_file}"
@@ -91,12 +83,10 @@ def _run_backup_logic(project):
     all_backups = sorted([d for d in os.listdir(project_backup_root) if os.path.isdir(os.path.join(project_backup_root, d))], reverse=True)
     for old_backup in all_backups[project.versions_to_keep:]:
         subprocess.run(['rm', '-rf', os.path.join(project_backup_root, old_backup)])
-
     project.last_backup_time = timestamp
     project.last_backup_status = 'Sikeres'
     db.session.commit()
 
-# --- FORM KEZELÉS ---
 def validate_and_save_project(project, is_new=False):
     form_data = request.form
     project.name = form_data['name']
@@ -136,13 +126,11 @@ def validate_and_save_project(project, is_new=False):
             flash('Új projektnél a Helper API kulcs megadása kötelező!', 'danger')
             return False
         project.set_password(form_data.get('helper_api_key'), 'helper_api')
-
     if is_new:
         db.session.add(project)
     db.session.commit()
     return True
 
-# --- WEB OLDALAK (ROUTES) ---
 @app.route('/')
 def index():
     projects = Project.query.order_by(Project.name).all()
