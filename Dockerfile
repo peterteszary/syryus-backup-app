@@ -1,31 +1,30 @@
-# 1. lépés: Hivatalos Python alap-image használata
+# 1. lépés: Alap-image
 FROM python:3.9-bullseye
 
-# 2. lépés: Minden szükséges rendszer-csomag telepítése egyetlen lépésben
+# 2. lépés: Rendszer-csomagok telepítése
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
     lftp \
     mariadb-client \
-    iputils-ping \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 3. lépés: Munkakönyvtár beállítása
+# 3. lépés: Munkakönyvtár
 WORKDIR /app
 
-# 4. lépés: Python függőségek telepítése
+# 4. lépés: Python függőségek
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 5. lépés: Alkalmazás kódjának másolása
+# Most már az új szkripteket is bemásoljuk
 COPY . .
 
-# Az adatbázis inicializáló sort INNEN KIVESSZÜK!
-# RUN python -c 'from app import db; db.create_all()'
+# 6. lépés: Az entrypoint szkript futtathatóvá tétele
+RUN chmod +x entrypoint.sh
 
 # 7. lépés: Port megadása
 EXPOSE 5000
 
-# 8. lépés: Alkalmazás indítása
-# A CMD parancsot módosítjuk, hogy indításkor hozza létre az adatbázist
-CMD ["sh", "-c", "python -c 'from app import db; db.create_all()' && gunicorn --bind 0.0.0.0:5000 app:app"]
+# 8. lépés: Az entrypoint szkript beállítása a konténer fő indítóparancsaként
+ENTRYPOINT ["./entrypoint.sh"]
