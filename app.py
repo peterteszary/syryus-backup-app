@@ -21,7 +21,7 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 db = SQLAlchemy(app)
 
 
-# --- ADATBÁZIS MODELL (JAVÍTVA) ---
+# --- ADATBÁZIS MODELL (Javított) ---
 class Project(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, unique=True)
@@ -36,7 +36,6 @@ class Project(db.Model):
     encrypted_ftp_pass = db.Column(db.LargeBinary)
     remote_path = db.Column(db.String(200), nullable=False)
     helper_url = db.Column(db.String(255))
-    # --- JAVÍTÁS ITT: A változónév most már konzisztens ---
     encrypted_helper_api_pass = db.Column(db.LargeBinary)
     versions_to_keep = db.Column(db.Integer, default=3)
     backup_schedule = db.Column(db.String(50), nullable=False, default='manual')
@@ -54,21 +53,18 @@ class Project(db.Model):
             return cipher_suite.decrypt(encrypted_pass).decode()
         return ""
 
-# --- MENTÉSI LOGIKA (Változatlan, de most már helyes adatokkal dolgozik) ---
+# --- MENTÉSI LOGIKA ---
 def _run_backup_logic(project):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     project_backup_root = os.path.join('/backups', project.name)
     current_backup_path = os.path.join(project_backup_root, timestamp)
-    
     os.makedirs(current_backup_path, exist_ok=True)
-    
     db_backup_file = os.path.join(current_backup_path, 'db_backup.sql')
 
     if project.backup_method == 'helper':
         api_key = project.get_password('helper_api')
         if not api_key or not project.helper_url:
             raise Exception("Helper URL or API Key is missing for this project.")
-            
         trigger_url = f"{project.helper_url}?syryus_action=backup_db&api_key={api_key}"
         response = requests.get(trigger_url, timeout=120)
         response.raise_for_status()
@@ -91,7 +87,7 @@ def _run_backup_logic(project):
     files_backup_path = os.path.join(current_backup_path, 'files')
     lftp_command = f"lftp -u '{project.ftp_user},{ftp_pass}' {project.ftp_type}://{project.ftp_host} -e 'mirror --delete-first --verbose {project.remote_path} {files_backup_path}; quit'"
     subprocess.run(lftp_command, check=True, shell=True, stderr=subprocess.PIPE, text=True)
-
+    
     all_backups = sorted([d for d in os.listdir(project_backup_root) if os.path.isdir(os.path.join(project_backup_root, d))], reverse=True)
     for old_backup in all_backups[project.versions_to_keep:]:
         subprocess.run(['rm', '-rf', os.path.join(project_backup_root, old_backup)])
@@ -100,7 +96,7 @@ def _run_backup_logic(project):
     project.last_backup_status = 'Sikeres'
     db.session.commit()
 
-# --- FORM KEZELÉS (Változatlan, de most már a helyes mezőket kezeli) ---
+# --- FORM KEZELÉS ---
 def validate_and_save_project(project, is_new=False):
     form_data = request.form
     project.name = form_data['name']
@@ -126,8 +122,8 @@ def validate_and_save_project(project, is_new=False):
             return False
 
     if is_new and not form_data.get('ftp_pass'):
-         flash('Új projektnél az FTP jelszó megadása kötelező!', 'danger')
-         return False
+        flash('Új projektnél az FTP jelszó megadása kötelező!', 'danger')
+        return False
     project.set_password(form_data.get('ftp_pass'), 'ftp')
     
     if project.backup_method == 'direct':
@@ -136,18 +132,64 @@ def validate_and_save_project(project, is_new=False):
             return False
         project.set_password(form_data.get('db_pass'), 'db')
     else:
-        if is_new and not form_data.get('helper_api_key'): # A form mező neve maradhat _key
+        if is_new and not form_data.get('helper_api_key'):
             flash('Új projektnél a Helper API kulcs megadása kötelező!', 'danger')
             return False
-        project.set_password(form_data.get('helper_api_key'), 'helper_api') # Ez most már helyesen az 'encrypted_helper_api_pass' mezőt fogja írni
+        project.set_password(form_data.get('helper_api_key'), 'helper_api')
 
     if is_new:
         db.session.add(project)
     db.session.commit()
     return True
 
-# --- WEB OLDALAK (Változatlan) ---
+# --- WEB OLDALAK (ROUTES) ---
 @app.route('/')
 def index():
-    # ...
-# ... a fájl többi része változatlan ...
+    projects = Project.query.order_by(Project.name).all()
+    return render_template('index.html', projects=projects)
+
+@app.route('/project/new', methods=['GET', 'POST'])
+def new_project():
+    if request.method == 'POST':
+        project = Project()
+        if validate_and_save_project(project, is_new=True):
+            flash(f"'{project.name}' projekt sikeresen létrehozva!", 'success')
+            return redirect(url_for('index'))
+        return render_template('project_form.html', project=request.form, form_data=request.form)
+    return render_template('project_form.html', project=None, form_data={})
+
+@app.route('/project/edit/<int:id>', methods=['GET', 'POST'])
+def edit_project(id):
+    project = Project.query.get_or_404(id)
+    if request.method == 'POST':
+        if validate_and_save_project(project):
+            flash(f"'{project.name}' projekt adatai frissítve!", 'success')
+            return redirect(url_for('index'))
+        return render_template('project_form.html', project=project, form_data=request.form)
+    return render_template('project_form.html', project=project, form_data={})
+    
+@app.route('/project/delete/<int:id>', methods=['POST'])
+def delete_project(id):
+    project = Project.query.get_or_404(id)
+    db.session.delete(project)
+    db.session.commit()
+    flash(f"'{project.name}' projekt törölve!", 'info')
+    return redirect(url_for('index'))
+
+@app.route('/backup/<int:id>')
+def backup_project(id):
+    project = Project.query.get_or_404(id)
+    try:
+        _run_backup_logic(project)
+        flash(f"'{project.name}' mentése sikeres!", 'success')
+    except Exception as e:
+        error_message = str(e)
+        if hasattr(e, 'stderr') and e.stderr:
+            error_message = e.stderr.decode('utf-8', errors='ignore')
+        project.last_backup_status = f'Hiba: {error_message}'
+        db.session.commit()
+        flash(f"'{project.name}' mentése sikertelen! Hiba: {error_message}", 'danger')
+    return redirect(url_for('index'))
+
+if __name__ == '__main__':
+    app.run()
