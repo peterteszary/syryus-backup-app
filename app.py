@@ -16,7 +16,7 @@ cipher_suite = Fernet(ENCRYPTION_KEY)
 
 app = Flask(__name__)
 # Az adatbázis most az 'instance' mappába kerül, amit kimentünk a volume-mal
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///instance/database.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////app/instance/database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 db = SQLAlchemy(app)
