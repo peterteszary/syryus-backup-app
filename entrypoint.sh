@@ -51,4 +51,4 @@ fi
 
 echo ">> STEP 7: Starting Gunicorn Web Server..."
 echo "-------------------------------------------"
-exec gunicorn --bind 0.0.0.0:5000 app:app
+exec gunicorn --workers 1 --timeout 120 --bind 0.0.0.0:5000 app:app
