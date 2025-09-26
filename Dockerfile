@@ -1,16 +1,17 @@
 # 1. lépés: Hivatalos Python alap-image használata
 FROM python:3.9-bullseye
 
-# 2. lépés: HÁLÓZATI DIAGNOSZTIKA
-# Teszteljük a nyers internet kapcsolatot (IP cím alapján)
+# 2. lépés: Csomaglisták frissítése. HA EZ A LÉPÉS ELBUKIK, AKKOR VAN HÁLÓZATI HIBA.
+RUN apt-get update -y
+
+# 3. lépés: A hálózati diagnosztikai eszközök telepítése
+RUN apt-get install -y --no-install-recommends iputils-ping
+
+# 4. lépés: Most már futtatjuk a tényleges hálózati tesztet
 RUN ping -c 4 8.8.8.8
 
-# Teszteljük a DNS feloldást (domain név alapján)
-RUN ping -c 4 google.com
-
-# 3. lépés: Rendszer szintű függőségek telepítése
-RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends \
+# 5. lépés: Az alkalmazáshoz szükséges csomagok telepítése
+RUN apt-get install -y --no-install-recommends \
     lftp \
     mariadb-client \
     && apt-get clean && \
