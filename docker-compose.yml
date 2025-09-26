@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  syryus:
+    container_name: syryus_backup_app
+    build: .
+    restart: unless-stopped
+    ports:
+      # A szerver 5555-ös portját köti össze a konténer 5000-es portjával.
+      # Így éred majd el: http://<Az ip címed>:5555
+      - "5555:5000"
+    volumes:
+      # Az SQLite adatbázis és a konfiguráció helye. A ./data mappa a docker-compose.yml mellett jön létre.
+      - ./data:/app/instance
+      # A weboldalak mentéseinek helye. A ./backups mappa a docker-compose.yml mellett jön létre.
+      - ./backups:/backups
+    environment:
+      # !!! FONTOS: Ezeket a kulcsokat a telepítés előtt cseréld le a saját, egyedi kulcsaidra!
+      # Generálj újakat, és másold be őket ide.
+      - ENCRYPTION_KEY=b'CSERELD_LE_EGY_SAJAT_GENERALT_KULCSRA'
+      - SECRET_KEY=CSERELD_LE_EGY_MASIK_SAJAT_KULCSRA

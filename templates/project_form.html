@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+{% block content %}
+    <h2 class="mb-4">{{ 'Projekt szerkesztése' if project else 'Új Projekt Hozzáadása' }}</h2>
+    <form method="POST">
+        <div class="mb-3">
+            <label for="name" class="form-label">Projekt Neve</label>
+            <input type="text" class="form-control" id="name" name="name" value="{{ project.name if project }}" required>
+        </div>
+        
+        <hr>
+        <h4 class="mt-4">Adatbázis Adatok</h4>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label for="db_host" class="form-label">DB Host</label>
+                <input type="text" class="form-control" id="db_host" name="db_host" value="{{ project.db_host if project }}" required>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="db_name" class="form-label">DB Név</label>
+                <input type="text" class="form-control" id="db_name" name="db_name" value="{{ project.db_name if project }}" required>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="db_user" class="form-label">DB Felhasználó</label>
+                <input type="text" class="form-control" id="db_user" name="db_user" value="{{ project.db_user if project }}" required>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="db_pass" class="form-label">DB Jelszó <small class="text-muted">{{ '(hagyd üresen, ha nem változtatod)' if project }}</small></label>
+                <input type="password" class="form-control" id="db_pass" name="db_pass" {{ 'required' if not project }}>
+            </div>
+        </div>
+
+        <hr>
+        <h4 class="mt-4">FTP/SFTP Adatok</h4>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label for="ftp_type" class="form-label">Protokoll</label>
+                <select class="form-select" id="ftp_type" name="ftp_type">
+                    <option value="sftp" {{ "selected" if project and project.ftp_type == 'sftp' }}>SFTP (ajánlott)</option>
+                    <option value="ftp" {{ "selected" if project and project.ftp_type == 'ftp' }}>FTP</option>
+                </select>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="ftp_host" class="form-label">FTP Host</label>
+                <input type="text" class="form-control" id="ftp_host" name="ftp_host" value="{{ project.ftp_host if project }}" required>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="ftp_user" class="form-label">FTP Felhasználó</label>
+                <input type="text" class="form-control" id="ftp_user" name="ftp_user" value="{{ project.ftp_user if project }}" required>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="ftp_pass" class="form-label">FTP Jelszó <small class="text-muted">{{ '(hagyd üresen, ha nem változtatod)' if project }}</small></label>
+                <input type="password" class="form-control" id="ftp_pass" name="ftp_pass" {{ 'required' if not project }}>
+            </div>
+            <div class="col-12 mb-3">
+                <label for="remote_path" class="form-label">Távoli útvonal (pl. public_html)</label>
+                <input type="text" class="form-control" id="remote_path" name="remote_path" value="{{ project.remote_path if project }}" required>
+            </div>
+        </div>
+        
+        <hr>
+        <h4 class="mt-4">Mentési Beállítások</h4>
+        <div class="row">
+             <div class="col-md-6 mb-3">
+                <label for="versions_to_keep" class="form-label">Megtartandó verziók száma</label>
+                <input type="number" class="form-control" id="versions_to_keep" name="versions_to_keep" value="{{ project.versions_to_keep if project else 3 }}" required>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="local_backup_dir" class="form-label">Mentési mappa a konténeren belül</label>
+                <input type="text" class="form-control" id="local_backup_dir" name="local_backup_dir" value="{{ project.local_backup_dir if project else '/backups' }}" readonly>
+                 <div class="form-text">Ez a mappa a konténeren belül van. A hoszt gépen a `docker-compose.yml` mellett található `backups` mappába kerülnek a mentések.</div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary mt-3">Projekt Mentése</button>
+        <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3">Mégse</a>
+    </form>
+{% endblock %}
