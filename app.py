@@ -1,7 +1,9 @@
+# EZ A TELJES, VÉGLEGES app.py
 import os
 import subprocess
 import requests
 import threading
+import shutil
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -19,7 +21,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 db = SQLAlchemy(app)
 
-# --- ADATBÁZIS MODELL ---
 class Project(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, unique=True)
@@ -51,24 +52,18 @@ class Project(db.Model):
             return cipher_suite.decrypt(encrypted_pass).decode()
         return ""
 
-# --- MENTÉSI LOGIKA (ÁLLAPOTJELZÉSSEL) ---
 def _run_backup_logic(project, app_context):
     def write_status(file, message):
         file.write(f"{datetime.now().strftime('%H:%M:%S')} - {message}\n")
         file.flush()
-
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     project_backup_root = os.path.join('/backups', project.name)
     current_backup_path = os.path.join(project_backup_root, timestamp)
     os.makedirs(current_backup_path, exist_ok=True)
-    
     status_file_path = os.path.join(current_backup_path, 'status.log')
-    
     try:
         with open(status_file_path, 'w') as status_file:
             write_status(status_file, "Indítás...")
-            
-            # --- Adatbázis mentés ---
             write_status(status_file, "Adatbázis mentése...")
             db_backup_file = os.path.join(current_backup_path, 'db_backup.sql')
             if project.backup_method == 'helper':
@@ -81,46 +76,36 @@ def _run_backup_logic(project, app_context):
                     with open(db_backup_file, 'wb') as f:
                         for chunk in r.iter_content(chunk_size=8192):
                             f.write(chunk)
-            else: # direct
+            else:
                 db_pass = project.get_password('db')
                 db_command = f"mysqldump --host={project.db_host} --user={project.db_user} --password='{db_pass}' {project.db_name} > {db_backup_file}"
                 subprocess.run(db_command, check=True, shell=True, stderr=subprocess.PIPE, text=True)
-            
-            # --- Fájlok mentése ---
             write_status(status_file, "Fájlok szinkronizálása (ez eltarthat egy ideig)...")
             ftp_pass = project.get_password('ftp')
             files_backup_path = os.path.join(current_backup_path, 'files')
             lftp_command = f"lftp -u '{project.ftp_user},{ftp_pass}' {project.ftp_type}://{project.ftp_host} -e 'mirror --delete-first {project.remote_path} {files_backup_path}; quit'"
             subprocess.run(lftp_command, check=True, shell=True, stderr=subprocess.PIPE, text=True)
-            
-            # --- Takarítás ---
             write_status(status_file, "Régi mentések törlése...")
             all_backups = sorted([d for d in os.listdir(project_backup_root) if os.path.isdir(os.path.join(project_backup_root, d))], reverse=True)
             for old_backup in all_backups[project.versions_to_keep:]:
-                subprocess.run(['rm', '-rf', os.path.join(project_backup_root, old_backup)])
-
-            # --- Befejezés ---
+                shutil.rmtree(os.path.join(project_backup_root, old_backup))
             with app_context():
                 project_to_update = Project.query.get(project.id)
                 project_to_update.last_backup_time = timestamp
                 project_to_update.last_backup_status = 'Sikeres'
                 db.session.commit()
             write_status(status_file, "KÉSZ!")
-
     except Exception as e:
         error_message = str(e)
         if hasattr(e, 'stderr') and e.stderr:
             error_message = e.stderr.decode('utf-8', errors='ignore')
-        
         with open(status_file_path, 'a') as status_file:
             write_status(status_file, f"HIBA: {error_message}")
-        
         with app_context():
             project_to_update = Project.query.get(project.id)
             project_to_update.last_backup_status = f'Hiba: {error_message}'
             db.session.commit()
 
-# --- FORM KEZELÉS ---
 def validate_and_save_project(project, is_new=False):
     form_data = request.form
     project.name = form_data['name']
@@ -131,7 +116,6 @@ def validate_and_save_project(project, is_new=False):
     project.remote_path = form_data['remote_path']
     project.versions_to_keep = int(form_data.get('versions_to_keep', 3))
     project.backup_schedule = form_data['backup_schedule']
-
     if project.backup_method == 'direct':
         project.db_host = form_data.get('db_host')
         project.db_name = form_data.get('db_name')
@@ -144,12 +128,10 @@ def validate_and_save_project(project, is_new=False):
         if not project.helper_url:
             flash('Helper Bővítmény módnál a WordPress URL kitöltése kötelező!', 'danger')
             return False
-
     if is_new and not form_data.get('ftp_pass'):
         flash('Új projektnél az FTP jelszó megadása kötelező!', 'danger')
         return False
     project.set_password(form_data.get('ftp_pass'), 'ftp')
-    
     if project.backup_method == 'direct':
         if is_new and not form_data.get('db_pass'):
             flash('Új projektnél a DB jelszó megadása kötelező!', 'danger')
@@ -165,7 +147,6 @@ def validate_and_save_project(project, is_new=False):
     db.session.commit()
     return True
 
-# --- WEB OLDALAK (ROUTES) ---
 @app.route('/')
 def index():
     projects = Project.query.order_by(Project.name).all()
@@ -199,34 +180,63 @@ def delete_project(id):
     flash(f"'{project.name}' projekt törölve!", 'info')
     return redirect(url_for('index'))
 
-# --- A MENTÉST INDÍTÓ VÉGPONT ---
 @app.route('/backup/<int:id>')
 def backup_project(id):
     project = Project.query.get_or_404(id)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    
     backup_thread = threading.Thread(target=_run_backup_logic, args=(project, app.app_context))
     backup_thread.start()
-    
-    return jsonify({
-        "status": "started", 
-        "project_name": project.name, 
-        "timestamp": timestamp
-    })
+    return jsonify({"status": "started", "project_name": project.name, "timestamp": timestamp})
 
-# --- AZ ÁLLAPOTOT LEKÉRDEZŐ VÉGPONT ---
 @app.route('/status/<project_name>/<timestamp>')
 def backup_status(project_name, timestamp):
     project_backup_root = os.path.join('/backups', project_name)
     current_backup_path = os.path.join(project_backup_root, timestamp)
     status_file_path = os.path.join(current_backup_path, 'status.log')
-    
     try:
         with open(status_file_path, 'r') as f:
             last_line = f.readlines()[-1].strip()
             return jsonify({"status": last_line})
     except (FileNotFoundError, IndexError):
         return jsonify({"status": "Várakozás a mentés indítására..."})
+
+@app.route('/project/<int:id>/backups')
+def list_backups(id):
+    project = Project.query.get_or_404(id)
+    project_backup_root = os.path.join('/backups', project.name)
+    backups = []
+    if os.path.exists(project_backup_root):
+        for timestamp_dir in sorted(os.listdir(project_backup_root), reverse=True):
+            full_path = os.path.join(project_backup_root, timestamp_dir)
+            if os.path.isdir(full_path):
+                total_size = 0
+                try:
+                    for dirpath, dirnames, filenames in os.walk(full_path):
+                        for f in filenames:
+                            fp = os.path.join(dirpath, f)
+                            total_size += os.path.getsize(fp)
+                except FileNotFoundError:
+                    # Előfordulhat, hogy a mappa törlődik, miközben számoljuk
+                    continue
+                backups.append({"timestamp": timestamp_dir, "size": round(total_size / (1024 * 1024), 2)})
+    return render_template('backups.html', project=project, backups=backups)
+
+@app.route('/backup/delete/<project_name>/<timestamp>', methods=['POST'])
+def delete_backup(project_name, timestamp):
+    if '..' in project_name or '/' in project_name or '..' in timestamp or '/' in timestamp:
+        flash('Érvénytelen projekt vagy időbélyeg!', 'danger')
+        return redirect(url_for('index'))
+    project = Project.query.filter_by(name=project_name).first_or_404()
+    backup_path = os.path.join('/backups', project_name, timestamp)
+    if os.path.exists(backup_path) and os.path.isdir(backup_path):
+        try:
+            shutil.rmtree(backup_path)
+            flash(f"'{timestamp}' mentés sikeresen törölve.", 'success')
+        except Exception as e:
+            flash(f"Hiba a mentés törlésekor: {e}", 'danger')
+    else:
+        flash('A törlendő mentés nem található.', 'warning')
+    return redirect(url_for('list_backups', id=project.id))
 
 if __name__ == '__main__':
     app.run()

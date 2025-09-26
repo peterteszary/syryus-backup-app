@@ -1,0 +1,38 @@
+{% extends "layout.html" %}
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="mb-0">"{{ project.name }}" mentései</h2>
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">Vissza a főoldalra</a>
+    </div>
+
+    <p>Itt láthatod a projekthez tartozó összes meglévő mentést. A rendszer automatikusan csak az utolsó {{ project.versions_to_keep }} verziót tartja meg mentéskor, de itt manuálisan is törölhetsz régebbieket.</p>
+
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>Mentés Időpontja (Mappa neve)</th>
+                    <th>Méret</th>
+                    <th class="text-end">Műveletek</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for backup in backups %}
+                <tr>
+                    <td class="fw-bold">{{ backup.timestamp }}</td>
+                    <td>{{ backup.size }} MB</td>
+                    <td class="text-end">
+                        <form action="{{ url_for('delete_backup', project_name=project.name, timestamp=backup.timestamp) }}" method="POST" class="d-inline" onsubmit="return confirm('Biztosan törlöd ezt a mentést? A művelet nem vonható vissza!');">
+                            <button type="submit" class="btn btn-danger btn-sm">Törlés</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="3" class="text-center py-4">Nincsenek meglévő mentések ehhez a projekthez.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}
